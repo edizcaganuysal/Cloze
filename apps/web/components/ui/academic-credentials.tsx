@@ -74,7 +74,7 @@ export function AcademicCredentials() {
                 alt="University of Toronto"
                 width={240}
                 height={240}
-                style={{ filter: 'invert(1)' }}
+                style={{ filter: 'invert(1) grayscale(1) brightness(2)' }}
                 className="h-24 w-auto opacity-80 transition-all duration-500 group-hover:opacity-100"
               />
             </motion.div>
