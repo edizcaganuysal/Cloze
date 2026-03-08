@@ -445,7 +445,7 @@ export class TwilioWebhookController {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrl}" track="both_tracks">
+    <Stream url="${streamUrl}" track="inbound_track">
       <Parameter name="callId" value="${callId}" />
     </Stream>
   </Connect>
