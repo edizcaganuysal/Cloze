@@ -6,8 +6,8 @@ const metadataBase = process.env['APP_BASE_URL']
   : undefined;
 
 export const metadata: Metadata = {
-  title: 'Sales AI',
-  description: 'Real-time AI coaching for sales reps — clean, focused, and live on every call.',
+  title: 'Cloze',
+  description: 'Real-time AI coaching for sales reps. Clean, focused, and live on every call.',
   metadataBase,
 };
 

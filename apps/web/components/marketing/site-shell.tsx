@@ -1,72 +1,162 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import SearchComponent from '@/components/ui/animated-glowing-search-bar';
+import { ClozeLogo } from '@/components/ui/cloze-logo';
 
 const NAV = [
   { href: '/product', label: 'Product' },
   { href: '/how-it-works', label: 'How it works' },
-  { href: '/pricing', label: 'Pricing' },
   { href: '/security', label: 'Security' },
 ];
 
+function ScrollToTopButton() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  return (
+    <button
+      aria-label="Scroll to top"
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className={`fixed bottom-6 right-6 z-50 group flex h-12 w-12 items-center justify-center rounded-full transition-all duration-500 ${
+        visible
+          ? 'translate-y-0 opacity-100'
+          : 'pointer-events-none translate-y-4 opacity-0'
+      }`}
+    >
+      {/* Glow effect */}
+      <span className="pointer-events-none absolute -inset-1 rounded-full bg-sky-500/20 blur-xl transition-all duration-500 group-hover:bg-purple-500/30 group-hover:blur-2xl" />
+
+      {/* Gradient border ring */}
+      <span
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: 'conic-gradient(from var(--scroll-btn-angle, 0deg), #0ea5e9, #a855f7, #ec4899, #0ea5e9)',
+          animation: 'scroll-btn-spin 3s linear infinite',
+          mask: 'radial-gradient(farthest-side, transparent calc(100% - 2px), #fff calc(100% - 2px))',
+          WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 2px), #fff calc(100% - 2px))',
+        }}
+      />
+
+      {/* Dark fill */}
+      <span className="absolute inset-[2px] rounded-full bg-black/80 backdrop-blur-xl" />
+
+      {/* Arrow icon */}
+      <svg
+        className="relative z-10 h-5 w-5 text-white transition-transform duration-300 group-hover:-translate-y-0.5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 19V5" />
+        <path d="M5 12l7-7 7 7" />
+      </svg>
+    </button>
+  );
+}
+
 export function SiteShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500 text-xs font-bold text-white">
-              S
-            </span>
-            <span className="text-sm font-semibold tracking-tight text-slate-900">Sales AI</span>
-          </Link>
-
-          <nav className="hidden items-center gap-6 md:flex">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
-              >
-                {item.label}
+    <div className="min-h-screen bg-black text-white">
+      {/* Transparent header — integrated with background */}
+      <header className="absolute top-0 left-0 right-0 z-40">
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="relative">
+            <div className="relative flex h-16 items-center justify-between">
+              {/* Logo */}
+              <Link href="/" className="group flex items-center gap-2">
+                <ClozeLogo size={32} className="transition-transform duration-300 group-hover:scale-105" />
+                <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent transition-all duration-300 group-hover:from-white group-hover:to-white">
+                  Cloze
+                </span>
               </Link>
-            ))}
-          </nav>
 
-          <div className="flex items-center gap-2">
-            <Link
-              href="/login"
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
-            >
-              Login
-            </Link>
-            <Link
-              href="/signup"
-              className="hidden rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 sm:inline-flex"
-            >
-              Sign up
-            </Link>
-            <Link
-              href="/book-demo"
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
-            >
-              Book demo
-            </Link>
+              {/* Nav links */}
+              <nav className="hidden items-center gap-1 md:flex">
+                {NAV.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="relative rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-400 transition-all duration-300 hover:bg-white/[0.06] hover:text-white"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+
+              {/* Search */}
+              <div className="hidden lg:block">
+                <SearchComponent />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/login"
+                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-400 transition-all duration-300 hover:bg-white/[0.06] hover:text-white"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/signup"
+                  className="hidden rounded-lg border border-white/10 px-3 py-1.5 text-sm font-medium text-neutral-300 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.06] hover:text-white sm:inline-flex"
+                >
+                  Sign up
+                </Link>
+                <Link
+                  href="/book-demo"
+                  className="group/demo relative rounded-lg p-px"
+                >
+                  <span
+                    className="absolute inset-0 rounded-lg opacity-70 transition-opacity duration-500 group-hover/demo:opacity-100"
+                    style={{
+                      background: 'conic-gradient(from var(--login-border-angle, 0deg), #10b981, #0ea5e9, #6366f1, #a855f7, #10b981)',
+                      animation: 'login-border-spin 3s linear infinite',
+                      mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                      maskComposite: 'exclude',
+                      WebkitMaskComposite: 'xor',
+                      padding: '1px',
+                    }}
+                  />
+                  <span className="relative flex items-center gap-1.5 overflow-hidden rounded-[7px] bg-black/80 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-xl transition-all duration-300 group-hover/demo:bg-black/60">
+                    <span className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover/demo:opacity-100">
+                      <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ animation: 'login-shimmer 2s ease-in-out infinite' }} />
+                    </span>
+                    <span className="relative">Book demo</span>
+                  </span>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
       <main>{children}</main>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p>Sales AI</p>
+      <footer className="border-t border-white/[0.06]">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-neutral-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <div className="flex items-center gap-1.5">
+            <ClozeLogo size={20} />
+            <span className="bg-gradient-to-r from-neutral-400 to-neutral-600 bg-clip-text text-transparent font-medium">Cloze</span>
+          </div>
           <div className="flex flex-wrap items-center gap-4">
-            <Link href="/product" className="hover:text-slate-900">Product</Link>
-            <Link href="/pricing" className="hover:text-slate-900">Pricing</Link>
-            <Link href="/security" className="hover:text-slate-900">Security</Link>
-            <Link href="/book-demo" className="hover:text-slate-900">Book demo</Link>
+            <Link href="/product" className="transition-colors duration-300 hover:text-white">Product</Link>
+            <Link href="/security" className="transition-colors duration-300 hover:text-white">Security</Link>
+            <Link href="/book-demo" className="transition-colors duration-300 hover:text-white">Book demo</Link>
           </div>
         </div>
       </footer>
+
+      <ScrollToTopButton />
     </div>
   );
 }

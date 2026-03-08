@@ -77,9 +77,9 @@ export function Sidebar({ me }: SidebarProps) {
     <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
       <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-500">
-          <span className="text-xs font-bold text-white">S</span>
+          <span className="text-xs font-bold text-white">C</span>
         </div>
-        <span className="text-sm font-semibold text-white">Sales AI</span>
+        <span className="text-sm font-semibold text-white">Cloze</span>
       </div>
 
       <div className="border-b border-slate-800 px-4 py-3">
