@@ -76,7 +76,7 @@ export function InteractiveHighlights() {
         What teams get
       </h3>
       <p className="mt-2 text-sm text-neutral-400">
-        Real-time guidance, intelligent agents, and actionable insights — all working together.
+        Real-time guidance, intelligent agents, and actionable insights. All working together.
       </p>
 
       {/* Feature cards */}

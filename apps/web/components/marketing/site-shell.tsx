@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import SearchComponent from '@/components/ui/animated-glowing-search-bar';
+import { ClozeLogo } from '@/components/ui/cloze-logo';
 
 const NAV = [
   { href: '/product', label: 'Product' },
@@ -72,13 +73,10 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <div className="relative">
             <div className="relative flex h-16 items-center justify-between">
               {/* Logo */}
-              <Link href="/" className="group flex items-center gap-2.5">
-                <span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 text-xs font-bold text-white shadow-lg shadow-sky-500/25 transition-shadow duration-300 group-hover:shadow-sky-500/40">
-                  S
-                  <span className="absolute inset-0 bg-gradient-to-t from-white/0 to-white/20" />
-                </span>
-                <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-sm font-semibold tracking-tight text-transparent transition-all duration-300 group-hover:from-white group-hover:to-white">
-                  Sales AI
+              <Link href="/" className="group flex items-center gap-2">
+                <ClozeLogo size={32} className="transition-transform duration-300 group-hover:scale-105" />
+                <span className="bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent transition-all duration-300 group-hover:from-white group-hover:to-white">
+                  Cloze
                 </span>
               </Link>
 
@@ -116,9 +114,25 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
                 </Link>
                 <Link
                   href="/book-demo"
-                  className="relative overflow-hidden rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition-all duration-300 hover:shadow-sky-500/40 hover:brightness-110"
+                  className="group/demo relative rounded-lg p-px"
                 >
-                  Book demo
+                  <span
+                    className="absolute inset-0 rounded-lg opacity-70 transition-opacity duration-500 group-hover/demo:opacity-100"
+                    style={{
+                      background: 'conic-gradient(from var(--login-border-angle, 0deg), #10b981, #0ea5e9, #6366f1, #a855f7, #10b981)',
+                      animation: 'login-border-spin 3s linear infinite',
+                      mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                      maskComposite: 'exclude',
+                      WebkitMaskComposite: 'xor',
+                      padding: '1px',
+                    }}
+                  />
+                  <span className="relative flex items-center gap-1.5 overflow-hidden rounded-[7px] bg-black/80 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-xl transition-all duration-300 group-hover/demo:bg-black/60">
+                    <span className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover/demo:opacity-100">
+                      <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" style={{ animation: 'login-shimmer 2s ease-in-out infinite' }} />
+                    </span>
+                    <span className="relative">Book demo</span>
+                  </span>
                 </Link>
               </div>
             </div>
@@ -130,7 +144,10 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 
       <footer className="border-t border-white/[0.06]">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-neutral-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p className="bg-gradient-to-r from-neutral-400 to-neutral-600 bg-clip-text text-transparent">Sales AI</p>
+          <div className="flex items-center gap-1.5">
+            <ClozeLogo size={20} />
+            <span className="bg-gradient-to-r from-neutral-400 to-neutral-600 bg-clip-text text-transparent font-medium">Cloze</span>
+          </div>
           <div className="flex flex-wrap items-center gap-4">
             <Link href="/product" className="transition-colors duration-300 hover:text-white">Product</Link>
             <Link href="/security" className="transition-colors duration-300 hover:text-white">Security</Link>

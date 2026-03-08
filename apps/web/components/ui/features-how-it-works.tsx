@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { Settings, Mic, BarChart3, Shield, type LucideIcon } from 'lucide-react';
-import { type ReactNode, useState, useRef, useCallback } from 'react';
+import { type ReactNode, useState, useRef, useCallback, useEffect } from 'react';
 
 export function FeaturesHowItWorks() {
     return (
@@ -345,6 +345,22 @@ const TRANSCRIPT_MESSAGES = [
     { role: 'prospect' as const, text: "Exactly — we just don't have visibility into what's happening on calls." },
 ];
 
+function CallTimer() {
+    const [seconds, setSeconds] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setSeconds((s) => (s >= 600 ? 0 : s + 1));
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+
+    return <span className="text-[10px] text-neutral-500 tabular-nums">{mins}:{secs}</span>;
+}
+
 function LiveCoachIllustration() {
     return (
         <div className="flex h-full w-full flex-col">
@@ -355,7 +371,7 @@ function LiveCoachIllustration() {
                     <span className="text-[10px] font-semibold text-red-400 uppercase tracking-wider">Live</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-neutral-500">02:34</span>
+                    <CallTimer />
                     <div className="flex items-end gap-[2px]">
                         {[0.3, 0.6, 1, 0.7, 0.4, 0.8, 0.5].map((h, i) => (
                             <div

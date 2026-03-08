@@ -44,7 +44,7 @@ export function AcademicCredentials() {
                   backgroundImage: 'linear-gradient(110deg, #818cf8 35%, #e0e7ff 50%, #818cf8 65%)',
                 }}
               >
-                Forged by excellence
+                Built on research
               </span>
             </motion.p>
 
@@ -54,10 +54,10 @@ export function AcademicCredentials() {
               transition={{ duration: 0.6, delay: 0.15 }}
               className="mt-4 text-base leading-relaxed text-neutral-400"
             >
-              Our technology is built on deep research and global academic
-              collaboration — powered by teams from{' '}
+              Cloze is developed by researchers and engineers from{' '}
               <span className="text-white font-medium">University of Toronto</span> and{' '}
-              <span className="text-white font-medium">Johns Hopkins University</span>.
+              <span className="text-white font-medium">Johns Hopkins University</span>,
+              {' '}bringing world-class AI expertise to every sales conversation.
             </motion.p>
           </div>
 

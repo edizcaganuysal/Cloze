@@ -151,7 +151,7 @@ export default function ProductPage() {
             transition={{ delay: 0.4, duration: 0.8 }}
             className="mt-5 text-lg leading-relaxed text-neutral-400"
           >
-            Sales AI gives reps a focused in-call assistant and gives managers a repeatable coaching system across every conversation.
+            Cloze gives reps a focused in-call assistant and gives managers a repeatable coaching system across every conversation.
           </motion.p>
         </motion.div>
 
