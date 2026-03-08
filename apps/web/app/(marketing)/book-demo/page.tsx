@@ -1,12 +1,10 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
 import Link from 'next/link';
 import { ClozeLogo } from '@/components/ui/cloze-logo';
 
 type FormState = {
-  type: string;
   name: string;
   email: string;
   company: string;
@@ -14,32 +12,8 @@ type FormState = {
   notes: string;
 };
 
-const TYPE_OPTIONS = [
-  { value: 'general', label: 'General demo' },
-  { value: 'custom-agent', label: 'Custom agent request' },
-  { value: 'enterprise', label: 'Enterprise discussion' },
-  { value: 'signup', label: 'Sign up interest' },
-];
-
-function normalizeType(value: string | null): string {
-  if (!value) return 'general';
-  return TYPE_OPTIONS.some((option) => option.value === value) ? value : 'general';
-}
-
 export default function BookDemoPage() {
-  return (
-    <Suspense>
-      <BookDemoForm />
-    </Suspense>
-  );
-}
-
-function BookDemoForm() {
-  const searchParams = useSearchParams();
-  const initialType = useMemo(() => normalizeType(searchParams.get('type')), [searchParams]);
-
   const [form, setForm] = useState<FormState>({
-    type: initialType,
     name: '',
     email: '',
     company: '',
@@ -49,10 +23,6 @@ function BookDemoForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-
-  useEffect(() => {
-    setForm((prev) => ({ ...prev, type: initialType }));
-  }, [initialType]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -80,7 +50,6 @@ function BookDemoForm() {
     setSubmitting(false);
     setSuccess(true);
     setForm({
-      type: form.type,
       name: '',
       email: '',
       company: '',
@@ -155,24 +124,6 @@ function BookDemoForm() {
               </div>
 
               <form className="space-y-4" onSubmit={handleSubmit}>
-                <div className="group/field">
-                  <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-neutral-500 transition-colors duration-300 group-focus-within/field:text-emerald-400">
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
-                    Request type
-                  </label>
-                  <select
-                    value={form.type}
-                    onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value }))}
-                    className={inputClass + ' appearance-none cursor-pointer'}
-                  >
-                    {TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value} className="bg-neutral-900 text-white">
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div className="group/field">
                     <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-neutral-500 transition-colors duration-300 group-focus-within/field:text-sky-400">
