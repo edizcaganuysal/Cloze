@@ -14,7 +14,7 @@ import { CallsGateway } from './calls.gateway';
 import { EngineService } from './engine.service';
 import { getPersonaById, PRACTICE_PERSONAS } from './practice-personas';
 import { CreditsService } from '../credits/credits.service';
-import { ProspectSimulatorService } from './prospect-simulator.service';
+import { ProspectSimulatorService, ProspectTurn } from './prospect-simulator.service';
 import { ENGINE_AS_MOCK_BRAIN } from '../config/feature-flags';
 
 @Injectable()
@@ -102,8 +102,8 @@ export class MockCallService implements OnApplicationBootstrap {
     // as outbound calls, ensuring practice matches real coaching.
     if (ENGINE_AS_MOCK_BRAIN()) {
       this.logger.log(`Mock call ${callId}: ENGINE_AS_MOCK_BRAIN enabled — using Engine + ProspectSimulator`);
-      // TODO: Implement text-based mock call loop using ProspectSimulatorService + TTS
-      // For now, fall through to existing Realtime API path
+      this.handleEngineBasedMockSession(browserWs, callId, orgId, contactJson, callRow.notes ?? null, practicePersonaId, customPersonaPrompt);
+      return;
     }
 
     // Start OpenAI WS connection IMMEDIATELY — load context in parallel (saves ~200ms)
@@ -640,6 +640,356 @@ export class MockCallService implements OnApplicationBootstrap {
       clearResponseWatchdog();
       openaiWs.close();
     });
+  }
+
+  /**
+   * Engine-based mock session: Realtime handles VAD + STT only.
+   * Prospect responses come from ProspectSimulatorService → TTS.
+   * Coaching comes from the same EngineService as outbound calls.
+   */
+  private handleEngineBasedMockSession(
+    browserWs: WebSocket,
+    callId: string,
+    orgId: string,
+    contactJson: Record<string, unknown>,
+    notes: string | null,
+    practicePersonaId: string | null,
+    customPersonaPrompt: string | null,
+  ) {
+    // Load context + optional custom agent in parallel
+    const contextPromise = Promise.all([
+      this.db
+        .select({
+          companyName: schema.salesContext.companyName,
+          whatWeSell: schema.salesContext.whatWeSell,
+          targetCustomer: schema.salesContext.targetCustomer,
+          targetRoles: schema.salesContext.targetRoles,
+          industries: schema.salesContext.industries,
+          globalValueProps: schema.salesContext.globalValueProps,
+          proofPoints: schema.salesContext.proofPoints,
+          caseStudies: schema.salesContext.caseStudies,
+          buyingTriggers: schema.salesContext.buyingTriggers,
+        })
+        .from(schema.salesContext)
+        .where(eq(schema.salesContext.orgId, orgId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+      this.db
+        .select({
+          name: schema.products.name,
+          elevatorPitch: schema.products.elevatorPitch,
+          valueProps: schema.products.valueProps,
+        })
+        .from(schema.products)
+        .where(eq(schema.products.orgId, orgId)),
+      practicePersonaId?.startsWith('custom:')
+        ? this.db
+            .select({ prompt: schema.agents.prompt })
+            .from(schema.agents)
+            .where(eq(schema.agents.id, practicePersonaId.replace(/^custom:/, '')))
+            .limit(1)
+            .then((rows) => rows[0] ?? null)
+        : Promise.resolve(null),
+    ]);
+
+    // Start Engine for coaching (same brain as outbound)
+    this.engineService.start(callId, false);
+
+    // Connect to Realtime for VAD + STT only (no audio output)
+    const openaiWs = new WebSocket(
+      'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
+      {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'OpenAI-Beta': 'realtime=v1',
+        },
+      },
+    );
+
+    const transcript: ProspectTurn[] = [];
+    let turnChain = Promise.resolve();
+    let lastTsMs = Date.now();
+    const nextTs = () => {
+      const now = Date.now();
+      lastTsMs = now > lastTsMs ? now : lastTsMs + 1;
+      return lastTsMs;
+    };
+
+    openaiWs.on('open', async () => {
+      this.logger.log(`Engine-based mock: Realtime connected for STT — call ${callId}`);
+
+      const [ctxRow, productRows, customAgent] = await contextPromise;
+
+      // Build prospect persona prompt (reuse existing persona builders)
+      let prospectPrompt: string;
+      if (customPersonaPrompt) {
+        prospectPrompt = this.buildCustomPersona(customPersonaPrompt, notes, ctxRow, productRows);
+      } else if (customAgent) {
+        prospectPrompt = this.buildCustomPersona(customAgent.prompt, notes, ctxRow, productRows);
+      } else {
+        prospectPrompt = this.buildProspectPersona(practicePersonaId, notes, ctxRow, productRows);
+      }
+
+      // Store the prompt for ProspectSimulator use
+      (openaiWs as any).__prospectPrompt = prospectPrompt;
+
+      // Configure Realtime for STT only: text modality (no audio output), server VAD for speech detection
+      openaiWs.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          modalities: ['text'],
+          instructions: 'Transcribe audio input only. Do not generate meaningful responses.',
+          input_audio_format: 'pcm16',
+          input_audio_transcription: {
+            model: 'whisper-1',
+            language: 'en',
+          },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.6,
+            prefix_padding_ms: 400,
+            silence_duration_ms: 1000,
+          },
+        },
+      }));
+    });
+
+    openaiWs.on('message', (rawData) => {
+      let event: { type: string; [key: string]: unknown };
+      try {
+        event = JSON.parse(rawData.toString());
+      } catch {
+        return;
+      }
+
+      switch (event.type) {
+        case 'session.created':
+        case 'session.updated': {
+          if (browserWs.readyState === WebSocket.OPEN) {
+            browserWs.send(JSON.stringify({ type: 'ready' }));
+          }
+          this.logger.log(`Engine-based mock: STT session ready — call ${callId}`);
+          break;
+        }
+
+        case 'input_audio_buffer.speech_started': {
+          // Signal to UI that rep is speaking
+          this.gateway.emitToCall(callId, 'mock.assistant_speaking', {
+            speaking: false,
+            tsMs: Date.now(),
+          });
+          break;
+        }
+
+        case 'conversation.item.input_audio_transcription.completed': {
+          // REP's speech transcribed by Whisper
+          const text = (event.transcript as string)?.trim();
+          if (!text) break;
+
+          // Enqueue turn processing (sequential, no overlaps)
+          turnChain = turnChain.then(async () => {
+            try {
+              // Emit rep transcript
+              const repTsMs = nextTs();
+              this.gateway.emitToCall(callId, 'transcript.final', {
+                speaker: 'REP',
+                text,
+                tsMs: repTsMs,
+                isFinal: true,
+              });
+              this.engineService.pushTranscript(callId, 'REP', text);
+              void this.db.insert(schema.callTranscript).values({
+                callId,
+                tsMs: repTsMs,
+                speaker: 'REP',
+                text,
+                isFinal: true,
+              }).catch((err: Error) =>
+                this.logger.error(`Transcript persist: ${err.message}`),
+              );
+
+              transcript.push({ speaker: 'REP', text });
+
+              // Generate prospect response via ProspectSimulator
+              const prospectPrompt = (openaiWs as any).__prospectPrompt as string;
+              const prospectText = await this.prospectSimulator.generateResponseFromPrompt(
+                orgId,
+                callId,
+                prospectPrompt,
+                transcript,
+              );
+
+              if (!prospectText || browserWs.readyState !== WebSocket.OPEN) return;
+
+              transcript.push({ speaker: 'PROSPECT', text: prospectText });
+
+              // Signal prospect speaking
+              if (browserWs.readyState === WebSocket.OPEN) {
+                browserWs.send(JSON.stringify({ type: 'assistant_speaking', speaking: true }));
+              }
+              this.gateway.emitToCall(callId, 'mock.assistant_speaking', {
+                speaking: true,
+                tsMs: Date.now(),
+              });
+
+              // Emit partial transcript so UI shows text immediately
+              this.gateway.emitToCall(callId, 'transcript.partial', {
+                speaker: 'PROSPECT',
+                text: prospectText,
+                tsMs: Date.now(),
+                isFinal: false,
+              });
+
+              // Generate TTS audio and stream to browser
+              await this.streamTtsToClient(browserWs, orgId, callId, prospectText);
+
+              // Emit final prospect transcript
+              const prospectTsMs = nextTs();
+              this.gateway.emitToCall(callId, 'transcript.final', {
+                speaker: 'PROSPECT',
+                text: prospectText,
+                tsMs: prospectTsMs,
+                isFinal: true,
+              });
+              this.engineService.pushTranscript(callId, 'PROSPECT', prospectText);
+              void this.db.insert(schema.callTranscript).values({
+                callId,
+                tsMs: prospectTsMs,
+                speaker: 'PROSPECT',
+                text: prospectText,
+                isFinal: true,
+              }).catch((err: Error) =>
+                this.logger.error(`Transcript persist: ${err.message}`),
+              );
+
+              // Signal prospect done speaking
+              if (browserWs.readyState === WebSocket.OPEN) {
+                browserWs.send(JSON.stringify({ type: 'assistant_speaking', speaking: false }));
+              }
+              this.gateway.emitToCall(callId, 'mock.assistant_speaking', {
+                speaking: false,
+                tsMs: Date.now(),
+              });
+
+              // Clear Realtime input buffer to prevent echo transcription
+              if (openaiWs.readyState === WebSocket.OPEN) {
+                openaiWs.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
+              }
+            } catch (err) {
+              this.logger.error(`Engine mock turn error (${callId}): ${(err as Error).message}`);
+              if (browserWs.readyState === WebSocket.OPEN) {
+                browserWs.send(JSON.stringify({ type: 'assistant_speaking', speaking: false }));
+              }
+              this.gateway.emitToCall(callId, 'mock.assistant_speaking', {
+                speaking: false,
+                tsMs: Date.now(),
+              });
+            }
+          });
+          break;
+        }
+
+        case 'response.done':
+        case 'response.audio_transcript.done':
+        case 'response.text.done':
+          // Ignore auto-responses from Realtime (text-only mode, we don't use them)
+          break;
+
+        case 'error': {
+          const errPayload = event.error && typeof event.error === 'object'
+            ? (event.error as Record<string, unknown>)
+            : {};
+          const message = typeof errPayload['message'] === 'string' ? errPayload['message'] : '';
+          if (!/active response|invalid_state|already/i.test(message)) {
+            this.logger.error(`Engine-based mock Realtime error — call ${callId}: ${JSON.stringify(event.error)}`);
+          }
+          break;
+        }
+      }
+    });
+
+    openaiWs.on('error', (err) => {
+      this.logger.error(`Engine-based mock Realtime WS error — call ${callId}: ${err.message}`);
+    });
+
+    openaiWs.on('close', () => {
+      this.logger.log(`Engine-based mock Realtime WS closed — call ${callId}`);
+    });
+
+    // Forward browser audio to Realtime for STT
+    browserWs.on('message', (rawData) => {
+      let msg: { type: string; data?: string };
+      try {
+        msg = JSON.parse(rawData.toString());
+      } catch {
+        return;
+      }
+      if (msg.type === 'audio' && msg.data && openaiWs.readyState === WebSocket.OPEN) {
+        openaiWs.send(JSON.stringify({
+          type: 'input_audio_buffer.append',
+          audio: msg.data,
+        }));
+      }
+    });
+
+    // Cleanup
+    browserWs.on('close', () => {
+      this.logger.log(`Engine-based mock browser WS closed — call ${callId}`);
+      openaiWs.close();
+      this.engineService.stop(callId);
+    });
+
+    browserWs.on('error', (err) => {
+      this.logger.error(`Engine-based mock browser WS error — call ${callId}: ${err.message}`);
+      openaiWs.close();
+      this.engineService.stop(callId);
+    });
+  }
+
+  /**
+   * Generate TTS audio from text and stream it to the browser as PCM16 chunks.
+   * OpenAI TTS returns 24kHz 16-bit PCM — same format the browser expects.
+   */
+  private async streamTtsToClient(
+    ws: WebSocket,
+    orgId: string,
+    callId: string,
+    text: string,
+  ): Promise<void> {
+    const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',
+        voice: 'shimmer',
+        input: text,
+        response_format: 'pcm',
+      }),
+    });
+
+    if (!ttsRes.ok) {
+      this.logger.error(`TTS failed (${callId}): ${ttsRes.status}`);
+      return;
+    }
+
+    const pcmBuffer = Buffer.from(await ttsRes.arrayBuffer());
+
+    // Debit TTS credits (char count as completionTokens, per model-costs.ts convention)
+    void this.creditsService.debitForAiUsage(
+      orgId, 'gpt-4o-mini-tts', 0, text.length,
+      'USAGE_TTS_MOCK_PROSPECT', { call_id: callId },
+    );
+
+    // Stream chunks to browser (4800 bytes ≈ 100ms at 24kHz 16-bit mono)
+    const CHUNK_SIZE = 4800;
+    for (let offset = 0; offset < pcmBuffer.length; offset += CHUNK_SIZE) {
+      if (ws.readyState !== WebSocket.OPEN) break;
+      const chunk = pcmBuffer.subarray(offset, Math.min(offset + CHUNK_SIZE, pcmBuffer.length));
+      ws.send(JSON.stringify({ type: 'audio', data: chunk.toString('base64') }));
+    }
   }
 
   getAvailablePersonas() {

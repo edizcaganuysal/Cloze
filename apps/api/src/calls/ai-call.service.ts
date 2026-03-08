@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
+  Optional,
 } from '@nestjs/common';
 import { WebSocketServer as WsServer } from 'ws';
 import WebSocket from 'ws';
@@ -12,8 +13,9 @@ import { eq, asc, desc } from 'drizzle-orm';
 import { DRIZZLE, DrizzleDb } from '../db/db.module';
 import * as schema from '../db/schema';
 import { CallsGateway } from './calls.gateway';
+import { EngineService } from './engine.service';
 import { buildAiCallerPrompt } from './ai-caller.prompt';
-import { twilioToOpenAI, openAIToTwilio } from './audio-utils';
+import { twilioToOpenAI, openAIToTwilio, ttsToTwilio } from './audio-utils';
 import { CreditsService } from '../credits/credits.service';
 import { ENGINE_AS_AI_CALLER_BRAIN } from '../config/feature-flags';
 
@@ -37,6 +39,7 @@ export class AiCallService implements OnApplicationBootstrap {
     private readonly gateway: CallsGateway,
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
     private readonly creditsService: CreditsService,
+    @Optional() private readonly engineService?: EngineService,
   ) {}
 
   get available(): boolean {
@@ -311,10 +314,10 @@ export class AiCallService implements OnApplicationBootstrap {
     // When ENGINE_AS_AI_CALLER_BRAIN is enabled, Realtime handles audio I/O only,
     // and Engine.tick() decides what to say each turn. This ensures the AI Caller
     // uses the same copilot brain as outbound coaching.
-    if (ENGINE_AS_AI_CALLER_BRAIN()) {
+    if (ENGINE_AS_AI_CALLER_BRAIN() && this.engineService) {
       this.logger.log(`AI call: ENGINE_AS_AI_CALLER_BRAIN enabled — Engine will decide responses`);
-      // TODO: Implement Engine-driven response loop with Realtime as voice-only layer
-      // For now, fall through to existing direct Realtime conversation
+      this.handleEngineBasedAiCallSession(twilioWs, initialCallId, initialStreamSid);
+      return;
     }
 
     let callId: string | null = initialCallId;
@@ -662,6 +665,368 @@ export class AiCallService implements OnApplicationBootstrap {
 
     twilioWs.on('close', () => {
       this.logger.log(`Twilio WS closed for AI call ${callId}`);
+      closeAll();
+    });
+  }
+
+  /**
+   * Engine-based AI call: Realtime handles VAD + STT for prospect audio only.
+   * Engine decides what the AI rep says. TTS generates speech → Twilio.
+   * This ensures the AI Caller uses the same copilot brain as live outbound coaching.
+   */
+  private handleEngineBasedAiCallSession(
+    twilioWs: WebSocket,
+    initialCallId: string | null,
+    initialStreamSid: string | null,
+  ) {
+    let callId: string | null = initialCallId;
+    let streamSid: string | null = initialStreamSid;
+    let openaiWs: WebSocket | null = null;
+    let sessionReady = false;
+    let lastTsMs = Date.now();
+    let speakingTts = false;
+
+    const nextTs = () => {
+      const now = Date.now();
+      lastTsMs = now > lastTsMs ? now : lastTsMs + 1;
+      return lastTsMs;
+    };
+
+    const sendToTwilio = (payload: Record<string, unknown>) => {
+      if (twilioWs.readyState === WebSocket.OPEN) {
+        twilioWs.send(JSON.stringify(payload));
+      }
+    };
+
+    const persistTranscript = (speaker: 'REP' | 'PROSPECT', text: string, tsMs: number) => {
+      if (!callId) return;
+      this.db.insert(schema.callTranscript).values({ callId, tsMs, speaker, text, isFinal: true })
+        .catch((err: Error) => this.logger.error(`Transcript persist error: ${err.message}`));
+    };
+
+    const emitTranscript = (speaker: 'REP' | 'PROSPECT', text: string) => {
+      if (!callId) return;
+      const tsMs = nextTs();
+      this.gateway.emitToCall(callId, 'transcript.final', { speaker, text, tsMs, isFinal: true });
+      persistTranscript(speaker, text, tsMs);
+    };
+
+    const closeAll = () => {
+      if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+        openaiWs.close();
+      }
+      if (callId) {
+        this.engineService!.unregisterTickCallback(callId);
+        this.engineService!.stop(callId);
+        this.db.update(schema.calls)
+          .set({ status: 'COMPLETED' })
+          .where(eq(schema.calls.id, callId))
+          .catch((err: Error) => this.logger.error(`Call status update error: ${err.message}`));
+        this.gateway.emitToCall(callId, 'call.ended', { callId });
+      }
+    };
+
+    /**
+     * Speak text via TTS and send audio to Twilio.
+     * Converts 24kHz PCM from TTS to 8kHz mulaw for Twilio.
+     */
+    const speakViaTts = async (text: string, voice: string, cId: string, oId: string) => {
+      speakingTts = true;
+      try {
+        const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini-tts',
+            voice,
+            input: text,
+            response_format: 'pcm',
+          }),
+        });
+
+        if (!ttsRes.ok) {
+          this.logger.error(`TTS failed for AI call ${cId}: ${ttsRes.status}`);
+          return;
+        }
+
+        const pcmBuffer = Buffer.from(await ttsRes.arrayBuffer());
+
+        // Debit TTS credits
+        void this.creditsService.debitForAiUsage(
+          oId, 'gpt-4o-mini-tts', 0, text.length,
+          'USAGE_TTS_AI_CALLER', { call_id: cId },
+        );
+
+        // Stream chunks to Twilio (convert 24kHz PCM → 8kHz mulaw)
+        // Chunk at 4800 bytes (100ms at 24kHz 16-bit) for smooth streaming
+        const CHUNK_SIZE = 4800;
+        for (let offset = 0; offset < pcmBuffer.length; offset += CHUNK_SIZE) {
+          if (twilioWs.readyState !== WebSocket.OPEN || !streamSid) break;
+          const chunk = pcmBuffer.subarray(offset, Math.min(offset + CHUNK_SIZE, pcmBuffer.length));
+          const mulawPayload = ttsToTwilio(chunk);
+          sendToTwilio({
+            event: 'media',
+            streamSid,
+            media: { payload: mulawPayload },
+          });
+        }
+
+        // Emit REP transcript
+        emitTranscript('REP', text);
+      } finally {
+        speakingTts = false;
+
+        // Clear Realtime input buffer to prevent echo from TTS playback
+        if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+          openaiWs.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
+        }
+      }
+    };
+
+    const startEngineSession = async (cId: string) => {
+      const [callRow] = await this.db
+        .select({
+          orgId: schema.calls.orgId,
+          agentId: schema.calls.agentId,
+          preparedOpenerText: schema.calls.preparedOpenerText,
+          contactJson: schema.calls.contactJson,
+        })
+        .from(schema.calls)
+        .where(eq(schema.calls.id, cId))
+        .limit(1);
+
+      if (!callRow) {
+        this.logger.error(`AI call not found: ${cId}`);
+        twilioWs.close();
+        return;
+      }
+
+      const orgId = callRow.orgId;
+      const contactCfg = (callRow.contactJson ?? {}) as Record<string, unknown>;
+      const selectedVoice = (typeof contactCfg.aiVoice === 'string' ? contactCfg.aiVoice : 'marin') as string;
+
+      // Load context for opener
+      const [ctxRow, , agentRow] = await Promise.all([
+        this.db
+          .select({ companyName: schema.salesContext.companyName })
+          .from(schema.salesContext)
+          .where(eq(schema.salesContext.orgId, callRow.orgId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+        Promise.resolve(null),
+        callRow.agentId
+          ? this.db
+              .select({ openers: schema.agents.openers })
+              .from(schema.agents)
+              .where(eq(schema.agents.id, callRow.agentId))
+              .limit(1)
+              .then((rows) => rows[0] ?? null)
+          : Promise.resolve(null),
+      ]);
+
+      const toList = (val: unknown): string[] =>
+        Array.isArray(val) ? val.filter((v): v is string => typeof v === 'string') : [];
+      const openers = toList(agentRow?.openers);
+      const opener =
+        callRow.preparedOpenerText?.trim() ||
+        (openers.length > 0 ? openers[0] : null) ||
+        `Hi, this is Alex from ${ctxRow?.companyName || 'our company'}. Quick question — do you have 30 seconds?`;
+
+      // Start Engine for this call (same brain as outbound coaching)
+      this.engineService!.start(cId, false);
+
+      // Register tick callback — Engine suggestions become AI rep speech
+      this.engineService!.registerTickCallback(cId, (say: string) => {
+        if (!say || speakingTts) return;
+        this.logger.debug(`Engine tick callback for AI call ${cId}: "${say.substring(0, 60)}..."`);
+        void speakViaTts(say, selectedVoice, cId, orgId);
+      });
+
+      // Connect to Realtime for VAD + STT (prospect audio only, no response generation)
+      openaiWs = new WebSocket(
+        'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'OpenAI-Beta': 'realtime=v1',
+          },
+        },
+      );
+
+      openaiWs.on('open', () => {
+        this.logger.log(`Engine-based AI call: Realtime connected for STT — call ${cId}`);
+
+        // Configure for STT only (text modality = no audio output)
+        openaiWs!.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            modalities: ['text'],
+            instructions: 'Transcribe audio input only. Do not generate meaningful responses.',
+            voice: selectedVoice,
+            input_audio_format: 'pcm16',
+            input_audio_transcription: { model: 'whisper-1', language: 'en' },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 600,
+            },
+          },
+        }));
+      });
+
+      openaiWs.on('message', (rawData) => {
+        let event: { type: string; [key: string]: unknown };
+        try {
+          event = JSON.parse(rawData.toString());
+        } catch {
+          return;
+        }
+
+        switch (event.type) {
+          case 'session.updated': {
+            if (!sessionReady) {
+              sessionReady = true;
+              this.logger.log(`Engine-based AI call: STT session ready — call ${cId}`);
+              // Speak the opener immediately via TTS (don't wait for Engine)
+              void speakViaTts(opener!, selectedVoice, cId, orgId);
+            }
+            break;
+          }
+
+          case 'conversation.item.input_audio_transcription.completed': {
+            // Prospect's speech transcribed
+            const text = (event.transcript as string)?.trim();
+            if (!text) break;
+
+            this.logger.debug(`Engine AI call prospect said (${cId}): "${text.substring(0, 80)}"`);
+            emitTranscript('PROSPECT', text);
+
+            // Push to Engine — the tick callback will fire with the response to speak
+            this.engineService!.pushTranscript(cId, 'PROSPECT', text);
+            break;
+          }
+
+          case 'response.done': {
+            // Ignore auto-responses from Realtime (text-only mode)
+            // Debit the minimal text tokens used by auto-response
+            const usage = event.usage as {
+              input_tokens?: number;
+              output_tokens?: number;
+            } | undefined;
+            if (usage && orgId) {
+              const textIn = Number(usage.input_tokens ?? 0);
+              const textOut = Number(usage.output_tokens ?? 0);
+              if (textIn > 0 || textOut > 0) {
+                void this.creditsService.debitForAiUsage(
+                  orgId, 'gpt-4o-mini-realtime-preview', textIn, textOut,
+                  'USAGE_LLM_AI_CALLER_REALTIME_STT', { call_id: cId },
+                );
+              }
+            }
+            break;
+          }
+
+          case 'error': {
+            const errPayload = event.error && typeof event.error === 'object'
+              ? (event.error as Record<string, unknown>)
+              : {};
+            const message = typeof errPayload['message'] === 'string' ? errPayload['message'] : '';
+            if (!/active response|invalid_state|already/i.test(message)) {
+              this.logger.error(`Engine AI call Realtime error (${cId}): ${message}`);
+            }
+            break;
+          }
+        }
+      });
+
+      openaiWs.on('error', (err) => {
+        this.logger.error(`Engine AI call Realtime WS error (${cId}): ${err.message}`);
+      });
+
+      openaiWs.on('close', () => {
+        this.logger.log(`Engine AI call Realtime WS closed — call ${cId}`);
+      });
+    };
+
+    // If callId was pre-set via handover, start immediately
+    if (callId) {
+      void startEngineSession(callId);
+    }
+
+    // Handle Twilio Media Stream messages
+    twilioWs.on('message', (rawData) => {
+      let msg: { event: string; [key: string]: unknown };
+      try {
+        msg = JSON.parse(rawData.toString());
+      } catch {
+        return;
+      }
+
+      switch (msg.event) {
+        case 'connected':
+          this.logger.log('Engine AI call: Twilio media stream connected');
+          break;
+
+        case 'start': {
+          if (callId) break; // Already initialized via handover
+
+          const startData = msg.start as Record<string, unknown> | undefined;
+          streamSid = (msg.streamSid ?? startData?.streamSid) as string | null;
+          const customParams = (startData?.customParameters ?? {}) as Record<string, unknown>;
+          callId = (customParams['callId'] ?? null) as string | null;
+
+          if (!callId) {
+            this.logger.error('Engine AI call stream started without callId');
+            twilioWs.close();
+            return;
+          }
+
+          this.logger.log(`Engine AI call stream started — callId=${callId} streamSid=${streamSid}`);
+          void startEngineSession(callId);
+          break;
+        }
+
+        case 'media': {
+          if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) break;
+          const mediaPayload = msg.media as Record<string, unknown> | undefined;
+          const track = mediaPayload?.track as string | undefined;
+          if (track !== 'inbound' && track !== undefined) break;
+          const payload = mediaPayload?.payload as string | undefined;
+          if (!payload) break;
+
+          // Don't forward audio during TTS playback (prevents echo)
+          if (speakingTts) break;
+
+          try {
+            const pcm16Payload = twilioToOpenAI(payload);
+            openaiWs.send(JSON.stringify({
+              type: 'input_audio_buffer.append',
+              audio: pcm16Payload,
+            }));
+          } catch (err) {
+            this.logger.warn(`Audio transcoding error: ${(err as Error).message}`);
+          }
+          break;
+        }
+
+        case 'stop':
+          this.logger.log(`Engine AI call stream stopped — callId=${callId}`);
+          closeAll();
+          break;
+      }
+    });
+
+    twilioWs.on('error', (err) => {
+      this.logger.error(`Twilio WS error for Engine AI call ${callId}: ${err.message}`);
+      closeAll();
+    });
+
+    twilioWs.on('close', () => {
+      this.logger.log(`Twilio WS closed for Engine AI call ${callId}`);
       closeAll();
     });
   }

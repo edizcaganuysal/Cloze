@@ -96,6 +96,11 @@ const MODEL_COSTS: Record<string, ModelCost> = {
     realtimeAudioInputPerToken: 40e-6,
     realtimeAudioOutputPerToken: 80e-6,
   },
+  'gpt-4o-mini-tts': {
+    inputPerToken: 0,
+    outputPerToken: 0.6e-6,  // $0.60 per 1M characters — pass char count as completionTokens
+    displayName: 'GPT-4o Mini TTS',
+  },
   'text-embedding-3-small': {
     inputPerToken: 0.02e-6,   // $0.02 per 1M tokens
     outputPerToken: 0,         // embeddings have no output tokens

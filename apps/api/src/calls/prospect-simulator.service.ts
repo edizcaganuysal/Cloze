@@ -69,6 +69,35 @@ export class ProspectSimulatorService {
     }
   }
 
+  /**
+   * Generate a prospect response from a raw system prompt (for practice personas
+   * that already have a complete prompt string).
+   */
+  async generateResponseFromPrompt(
+    orgId: string,
+    callId: string,
+    systemPrompt: string,
+    transcript: ProspectTurn[],
+  ): Promise<string> {
+    const userPrompt = this.buildConversationPrompt(transcript);
+
+    try {
+      const result = await this.llm.chatFast(systemPrompt, userPrompt, {
+        model: DEFAULT_PROSPECT_MODEL,
+        temperature: 1.0,
+        billing: {
+          orgId,
+          ledgerType: 'USAGE_LLM_MOCK_PROSPECT',
+          metadata: { call_id: callId },
+        },
+      });
+      return result.text.trim();
+    } catch (err) {
+      this.logger.error(`Prospect simulation failed (${callId}): ${(err as Error).message}`);
+      return "I'm sorry, can you repeat that? I got distracted for a moment.";
+    }
+  }
+
   private buildProspectSystemPrompt(
     persona: ProspectPersona,
     companyContext: string,

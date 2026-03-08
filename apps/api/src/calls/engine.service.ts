@@ -336,6 +336,7 @@ const STOP_WORDS = new Set([
 export class EngineService implements OnModuleDestroy {
   private readonly logger = new Logger(EngineService.name);
   private engines = new Map<string, EngineState>();
+  private readonly tickCallbacks = new Map<string, (say: string) => void>();
 
   constructor(
     private readonly gateway: CallsGateway,
@@ -435,6 +436,18 @@ export class EngineService implements OnModuleDestroy {
     }, 15_000);
 
     this.logger.log(`Engine started — call ${callId}, stubTranscript=${stubTranscript}`);
+  }
+
+  /**
+   * Register a callback to receive the primary suggestion text after each Engine tick.
+   * Used by AI Caller (ENGINE_AS_AI_CALLER_BRAIN) to get the text to speak.
+   */
+  registerTickCallback(callId: string, cb: (say: string) => void) {
+    this.tickCallbacks.set(callId, cb);
+  }
+
+  unregisterTickCallback(callId: string) {
+    this.tickCallbacks.delete(callId);
   }
 
   async refreshContext(callId: string) {
@@ -562,6 +575,7 @@ export class EngineService implements OnModuleDestroy {
     if (state.stubInterval) clearInterval(state.stubInterval);
     if (state.llmInterval) clearInterval(state.llmInterval);
     this.engines.delete(callId);
+    this.tickCallbacks.delete(callId);
     this.logger.log(`Engine stopped — call ${callId}`);
   }
 
@@ -2394,6 +2408,12 @@ export class EngineService implements OnModuleDestroy {
       cards: payload.cards,
       tsMs: Date.now(),
     });
+
+    // Notify tick callback (used by AI Caller ENGINE_AS_AI_CALLER_BRAIN)
+    const tickCb = this.tickCallbacks.get(callId);
+    if (tickCb && suggestionsForEmit[0]) {
+      try { tickCb(suggestionsForEmit[0]); } catch { /* callback errors don't break Engine */ }
+    }
 
     if (payload.objection) state.stats.objectionDetected = payload.objection;
     if (payload.sentiment) state.stats.sentiment = payload.sentiment;

@@ -103,6 +103,33 @@ export function twilioToOpenAI(base64Mulaw: string): string {
 }
 
 /**
+ * Downsample from 24 kHz to 8 kHz by averaging every 3 samples (1/3 factor).
+ * Used when converting TTS API output (24 kHz PCM) to Twilio format (8 kHz mulaw).
+ */
+export function downsample24to8(input: Int16Array): Int16Array {
+  const outLen = Math.floor(input.length / 3);
+  const out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    out[i] = Math.round((input[i * 3] + input[i * 3 + 1] + input[i * 3 + 2]) / 3);
+  }
+  return out;
+}
+
+/**
+ * Full pipeline: TTS 24 kHz PCM raw buffer → Twilio mulaw 8 kHz base64.
+ * OpenAI TTS with response_format='pcm' returns 24kHz 16-bit LE mono.
+ */
+export function ttsToTwilio(pcmBuffer: Buffer): string {
+  const pcm24k = new Int16Array(pcmBuffer.length / 2);
+  for (let i = 0; i < pcm24k.length; i++) {
+    pcm24k[i] = pcmBuffer.readInt16LE(i * 2);
+  }
+  const pcm8k = downsample24to8(pcm24k);
+  const mulaw = mulawEncode(pcm8k);
+  return Buffer.from(mulaw).toString('base64');
+}
+
+/**
  * Full pipeline: OpenAI PCM16 16 kHz base64 → Twilio mulaw 8 kHz base64.
  */
 export function openAIToTwilio(base64Pcm16: string): string {
