@@ -88,16 +88,38 @@ export function downsample16to8(input: Int16Array): Int16Array {
 }
 
 /**
- * Full pipeline: Twilio mulaw 8 kHz base64 → PCM16 16 kHz base64 (for OpenAI Realtime).
+ * Upsample from 8 kHz to 24 kHz using linear interpolation (3× factor).
+ * Used for Twilio → OpenAI Realtime (which expects 24 kHz PCM16).
+ */
+export function upsample8to24(input: Int16Array): Int16Array {
+  const out = new Int16Array(input.length * 3);
+  for (let i = 0; i < input.length - 1; i++) {
+    const s0 = input[i];
+    const s1 = input[i + 1];
+    out[i * 3] = s0;
+    out[i * 3 + 1] = Math.round(s0 + (s1 - s0) / 3);
+    out[i * 3 + 2] = Math.round(s0 + (2 * (s1 - s0)) / 3);
+  }
+  // Last sample — duplicate
+  const last = input[input.length - 1];
+  const li = (input.length - 1) * 3;
+  out[li] = last;
+  out[li + 1] = last;
+  out[li + 2] = last;
+  return out;
+}
+
+/**
+ * Full pipeline: Twilio mulaw 8 kHz base64 → PCM16 24 kHz base64 (for OpenAI Realtime).
  */
 export function twilioToOpenAI(base64Mulaw: string): string {
   const mulaw = new Uint8Array(Buffer.from(base64Mulaw, 'base64'));
   const pcm8k = mulawDecode(mulaw);
-  const pcm16k = upsample8to16(pcm8k);
+  const pcm24k = upsample8to24(pcm8k);
   // Convert Int16Array to Buffer (little-endian)
-  const buf = Buffer.allocUnsafe(pcm16k.length * 2);
-  for (let i = 0; i < pcm16k.length; i++) {
-    buf.writeInt16LE(pcm16k[i], i * 2);
+  const buf = Buffer.allocUnsafe(pcm24k.length * 2);
+  for (let i = 0; i < pcm24k.length; i++) {
+    buf.writeInt16LE(pcm24k[i], i * 2);
   }
   return buf.toString('base64');
 }
@@ -130,15 +152,15 @@ export function ttsToTwilio(pcmBuffer: Buffer): string {
 }
 
 /**
- * Full pipeline: OpenAI PCM16 16 kHz base64 → Twilio mulaw 8 kHz base64.
+ * Full pipeline: OpenAI PCM16 24 kHz base64 → Twilio mulaw 8 kHz base64.
  */
 export function openAIToTwilio(base64Pcm16: string): string {
   const buf = Buffer.from(base64Pcm16, 'base64');
-  const pcm16k = new Int16Array(buf.length / 2);
-  for (let i = 0; i < pcm16k.length; i++) {
-    pcm16k[i] = buf.readInt16LE(i * 2);
+  const pcm24k = new Int16Array(buf.length / 2);
+  for (let i = 0; i < pcm24k.length; i++) {
+    pcm24k[i] = buf.readInt16LE(i * 2);
   }
-  const pcm8k = downsample16to8(pcm16k);
+  const pcm8k = downsample24to8(pcm24k);
   const mulaw = mulawEncode(pcm8k);
   return Buffer.from(mulaw).toString('base64');
 }
