@@ -15,6 +15,7 @@ import * as schema from '../db/schema';
 import { SignupDto } from './dto/signup.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { EMPTY_COMPANY_PROFILE_DEFAULTS } from '../org/company-profile.defaults';
+import { MailService } from '../mail/mail.service';
 
 const FREE_PLAN_ID = 'free';
 const FREE_PLAN_NAME = 'Free';
@@ -25,6 +26,7 @@ export class AuthService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
     private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
   ) {}
 
   async login(email: string, password: string) {
@@ -71,6 +73,7 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const verificationToken = randomBytes(32).toString('hex');
 
     let created: { orgId: string; user: typeof schema.users.$inferSelect };
     try {
@@ -79,6 +82,7 @@ export class AuthService {
         orgName,
         email,
         passwordHash,
+        verificationToken,
       });
     } catch (error) {
       const code = (error as { code?: string })?.code;
@@ -89,6 +93,13 @@ export class AuthService {
     }
 
     await this.assignDefaultPlan(created.orgId, planId);
+
+    // Send verification email (non-blocking)
+    this.mailService
+      .sendVerificationEmail(email, name, verificationToken)
+      .catch((err) => {
+        console.error('Failed to send verification email:', err);
+      });
 
     return this.buildAuthPayload(created.user);
   }
@@ -144,6 +155,57 @@ export class AuthService {
     };
   }
 
+  async verifyEmail(token: string) {
+    if (!token) {
+      throw new BadRequestException('Verification token is required');
+    }
+
+    const [user] = await this.db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.verificationToken, token))
+      .limit(1);
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    if (user.emailVerified) {
+      return { message: 'Email already verified' };
+    }
+
+    await this.db
+      .update(schema.users)
+      .set({ emailVerified: true, verificationToken: null })
+      .where(eq(schema.users.id, user.id));
+
+    return { message: 'Email verified successfully' };
+  }
+
+  async resendVerification(userId: string) {
+    const [user] = await this.db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    if (!user) throw new UnauthorizedException();
+
+    if (user.emailVerified) {
+      return { message: 'Email already verified' };
+    }
+
+    const newToken = randomBytes(32).toString('hex');
+    await this.db
+      .update(schema.users)
+      .set({ verificationToken: newToken })
+      .where(eq(schema.users.id, user.id));
+
+    await this.mailService.sendVerificationEmail(user.email, user.name, newToken);
+
+    return { message: 'Verification email sent' };
+  }
+
   private async buildAuthPayload(user: typeof schema.users.$inferSelect) {
     const [[org], [orgSettingsRow]] = await Promise.all([
       this.db.select().from(schema.orgs).where(eq(schema.orgs.id, user.orgId)).limit(1),
@@ -176,6 +238,7 @@ export class AuthService {
         role: user.role,
         orgId: user.orgId,
         status: user.status,
+        emailVerified: user.emailVerified,
         createdAt: user.createdAt,
       },
       org: { id: org.id, name: org.name, createdAt: org.createdAt },
@@ -223,6 +286,7 @@ export class AuthService {
     orgName: string;
     email: string;
     passwordHash: string;
+    verificationToken?: string;
   }) {
     return this.db.transaction(async (tx) => {
       const [org] = await tx
@@ -257,6 +321,8 @@ export class AuthService {
           email: input.email,
           passwordHash: input.passwordHash,
           status: 'ACTIVE',
+          emailVerified: !input.verificationToken,
+          verificationToken: input.verificationToken ?? null,
         })
         .returning();
 

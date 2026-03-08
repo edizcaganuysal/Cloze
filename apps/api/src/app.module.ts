@@ -13,10 +13,12 @@ import { RequestsModule } from './requests/requests.module';
 import { IngestModule } from './ingest/ingest.module';
 import { BillingModule } from './billing/billing.module';
 import { SupportModule } from './support/support.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
     DbModule,
+    MailModule,
     HealthModule,
     AuthModule,
     OrgModule,

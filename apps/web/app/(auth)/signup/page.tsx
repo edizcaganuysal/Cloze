@@ -43,7 +43,7 @@ export default function SignupPage() {
         return;
       }
 
-      router.push('/app/home');
+      router.push('/check-email?email=' + encodeURIComponent(email));
     } catch {
       setError('Something went wrong. Please try again.');
       setLoading(false);

@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Body,
+  Query,
   Res,
   UseGuards,
   HttpCode,
@@ -77,6 +78,19 @@ export class AuthController {
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie(COOKIE_NAME, { path: '/' });
     return { ok: true };
+  }
+
+  @Get('verify-email')
+  @HttpCode(HttpStatus.OK)
+  verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  resendVerification(@CurrentUser() user: JwtPayload) {
+    return this.authService.resendVerification(user.sub);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -140,6 +140,8 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   status: userStatusEnum('status').default('ACTIVE').notNull(),
+  emailVerified: boolean('email_verified').default(false).notNull(),
+  verificationToken: text('verification_token'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
