@@ -36,9 +36,10 @@ function mapApiErrorToCode(message: string): string {
   return 'google_oauth_failed';
 }
 
-function errorRedirect(requestUrl: URL, mode: OAuthMode, code: string) {
+function errorRedirect(request: Request, mode: OAuthMode, code: string) {
+  const base = getBaseUrl(request);
   const path = mode === 'login' ? '/login' : '/signup';
-  const response = NextResponse.redirect(new URL(`${path}?error=${code}`, requestUrl));
+  const response = NextResponse.redirect(new URL(`${path}?error=${code}`, base));
   clearOAuthCookies(response);
   return response;
 }
@@ -55,11 +56,11 @@ export async function GET(request: Request) {
 
   if (!clientId || !clientSecret) {
     console.error('Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in web environment');
-    return errorRedirect(requestUrl, mode, 'google_config_missing');
+    return errorRedirect(request, mode, 'google_config_missing');
   }
 
   if (!code || !state || !stateCookie || state !== stateCookie) {
-    return errorRedirect(requestUrl, mode, 'google_oauth_failed');
+    return errorRedirect(request, mode, 'google_oauth_failed');
   }
 
   const redirectUri = getRedirectUri(request);
@@ -78,13 +79,13 @@ export async function GET(request: Request) {
   });
   const tokenData = await tokenRes.json().catch(() => ({}));
   if (!tokenRes.ok) {
-    return errorRedirect(requestUrl, mode, 'google_oauth_failed');
+    return errorRedirect(request, mode, 'google_oauth_failed');
   }
 
   const accessToken =
     typeof tokenData?.access_token === 'string' ? tokenData.access_token : '';
   if (!accessToken) {
-    return errorRedirect(requestUrl, mode, 'google_oauth_failed');
+    return errorRedirect(request, mode, 'google_oauth_failed');
   }
 
   const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
   });
   const profile = await profileRes.json().catch(() => ({}));
   if (!profileRes.ok) {
-    return errorRedirect(requestUrl, mode, 'google_oauth_failed');
+    return errorRedirect(request, mode, 'google_oauth_failed');
   }
 
   const email = typeof profile?.email === 'string' ? profile.email.trim() : '';
@@ -100,12 +101,12 @@ export async function GET(request: Request) {
   const googleSub = typeof profile?.sub === 'string' ? profile.sub.trim() : '';
   const emailVerified = profile?.email_verified === true;
   if (!email || !googleSub || !emailVerified) {
-    return errorRedirect(requestUrl, mode, 'google_oauth_failed');
+    return errorRedirect(request, mode, 'google_oauth_failed');
   }
 
   const apiBaseUrl = getApiBaseUrl();
   if (!apiBaseUrl) {
-    return errorRedirect(requestUrl, mode, 'google_config_missing');
+    return errorRedirect(request, mode, 'google_config_missing');
   }
 
   const orgName = store.get('google_oauth_org_name')?.value?.trim() ?? '';
@@ -122,15 +123,15 @@ export async function GET(request: Request) {
   const authData = await authRes.json().catch(() => ({}));
   if (!authRes.ok) {
     const message = typeof authData?.message === 'string' ? authData.message : '';
-    return errorRedirect(requestUrl, mode, mapApiErrorToCode(message));
+    return errorRedirect(request, mode, mapApiErrorToCode(message));
   }
 
   const token = typeof authData?.token === 'string' ? authData.token : '';
   if (!token) {
-    return errorRedirect(requestUrl, mode, 'google_oauth_failed');
+    return errorRedirect(request, mode, 'google_oauth_failed');
   }
 
-  const response = NextResponse.redirect(new URL('/app/home', requestUrl));
+  const response = NextResponse.redirect(new URL('/app/home', getBaseUrl(request)));
   response.cookies.set('access_token', token, {
     httpOnly: true,
     sameSite: 'lax',

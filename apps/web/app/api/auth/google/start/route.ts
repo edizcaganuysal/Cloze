@@ -37,7 +37,7 @@ export async function GET(request: Request) {
 
   if (!clientId || !clientSecret) {
     console.error('Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in web environment');
-    const response = NextResponse.redirect(new URL(`${returnPath}?error=google_config_missing`, requestUrl));
+    const response = NextResponse.redirect(new URL(`${returnPath}?error=google_config_missing`, getBaseUrl(request)));
     clearOAuthCookies(response);
     return response;
   }
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   const orgName = requestUrl.searchParams.get('orgName')?.trim() ?? '';
   if (mode === 'signup' && orgName.length < 2) {
     const response = NextResponse.redirect(
-      new URL('/signup?error=google_signup_requires_org', requestUrl),
+      new URL('/signup?error=google_signup_requires_org', getBaseUrl(request)),
     );
     clearOAuthCookies(response);
     return response;
