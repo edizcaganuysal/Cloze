@@ -122,7 +122,7 @@ function BookDemoForm() {
           <h1 className="mt-6 bg-gradient-to-b from-white via-white to-neutral-500 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
             Book a demo
           </h1>
-          <p className="mt-2 text-center text-sm text-neutral-500">Tell us about your team and goals. We'll handle the rest.</p>
+          <p className="mt-2 text-center text-sm text-neutral-500">Tell us about your team and goals. We&apos;ll handle the rest.</p>
         </div>
 
         {/* === Card with animated spinning border === */}
@@ -258,7 +258,7 @@ function BookDemoForm() {
                   <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
                     <div className="flex items-center gap-2">
                       <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      Request received. We'll be in touch soon.
+                      Request received. We&apos;ll be in touch soon.
                     </div>
                   </div>
                 )}
