@@ -90,7 +90,7 @@ export default function CheckEmailPage() {
               href="/login"
               className="mt-4 text-sm text-neutral-500 transition-colors duration-300 hover:text-white"
             >
-              Back to sign in
+              Back to login
             </Link>
           </div>
         </div>

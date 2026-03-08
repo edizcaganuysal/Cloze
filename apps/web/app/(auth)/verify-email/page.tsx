@@ -105,7 +105,7 @@ export default function VerifyEmailPage() {
                 className="group/btn relative mt-6 w-full overflow-hidden rounded-2xl py-3.5 text-center text-sm font-semibold text-white shadow-[0_8px_32px_rgba(16,185,129,0.3)] transition-all duration-300 hover:shadow-[0_8px_40px_rgba(16,185,129,0.45)] hover:brightness-110"
                 style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9, #6366f1)', display: 'block' }}
               >
-                Sign in to your account
+                Log in to your account
               </Link>
             )}
 
