@@ -1,53 +1,75 @@
-import Link from 'next/link';
+'use client';
 
-const STEPS = [
-  {
-    title: '1. Connect your workflow',
-    body: 'Pick your coaching defaults, rep permissions, and approved agents so every call starts from the same standard.',
-  },
-  {
-    title: '2. Coach calls in real time',
-    body: 'As reps talk, the assistant updates suggestions and context so they can adapt quickly without reading long scripts.',
-  },
-  {
-    title: '3. Review and improve',
-    body: 'After each call, managers get structured QA signals and reps get clear next actions for the next conversation.',
-  },
-];
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { BackgroundPaths } from '@/components/ui/background-paths';
+import { FeaturesHowItWorks } from '@/components/ui/features-how-it-works';
 
 export default function HowItWorksPage() {
+  const titleWords = 'How it works'.split('');
+
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-      <div className="max-w-3xl">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900">How it works</h1>
-        <p className="mt-4 text-lg leading-relaxed text-slate-600">
-          A simple loop: set standards, coach live, measure outcomes.
-        </p>
-      </div>
-
-      <div className="mt-10 space-y-4">
-        {STEPS.map((step) => (
-          <div key={step.title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">{step.title}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">{step.body}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-10 flex flex-wrap gap-3">
-        <Link
-          href="/pricing"
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
+    <BackgroundPaths>
+      <div className="mx-auto w-full max-w-6xl px-4 py-28 sm:px-6 lg:px-8">
+        {/* Hero */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.5 }}
+          className="max-w-3xl"
         >
-          View pricing
-        </Link>
-        <Link
-          href="/book-demo"
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+          <h1 className="text-5xl font-bold tracking-tighter sm:text-7xl">
+            {titleWords.map((letter, i) => (
+              <motion.span
+                key={i}
+                initial={{ y: 80, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{
+                  delay: i * 0.04,
+                  type: 'spring',
+                  stiffness: 150,
+                  damping: 25,
+                }}
+                className="inline-block bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent"
+              >
+                {letter === ' ' ? '\u00A0' : letter}
+              </motion.span>
+            ))}
+          </h1>
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.8 }}
+            className="mt-5 text-lg leading-relaxed text-neutral-400"
+          >
+            A simple loop: set standards, coach live, measure outcomes.
+          </motion.p>
+        </motion.div>
+
+        {/* Features Section */}
+        <FeaturesHowItWorks />
+
+        {/* CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1, duration: 0.6 }}
+          className="flex flex-wrap gap-3"
         >
-          Book demo
-        </Link>
+          <Link
+            href="/book-demo"
+            className="relative overflow-hidden rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 transition-all duration-300 hover:shadow-sky-500/40 hover:brightness-110"
+          >
+            Book demo
+          </Link>
+          <Link
+            href="/product"
+            className="rounded-lg border border-white/10 px-5 py-2.5 text-sm font-semibold text-neutral-300 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.06]"
+          >
+            See product
+          </Link>
+        </motion.div>
       </div>
-    </div>
+    </BackgroundPaths>
   );
 }

@@ -14,6 +14,11 @@ if (process.env['NODE_ENV'] === 'production') {
 }
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'ui.aceternity.com' },
+    ],
+  },
   transpilePackages: ['@live-sales-coach/shared'],
   outputFileTracingRoot: path.join(__dirname, '../../'),
   distDir: process.env['NODE_ENV'] === 'development' ? '.next-dev' : '.next',

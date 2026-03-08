@@ -1,5 +1,10 @@
 import { SiteShell } from '@/components/marketing/site-shell';
+import { PageLoader } from '@/components/marketing/page-loader';
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
-  return <SiteShell>{children}</SiteShell>;
+  return (
+    <SiteShell>
+      <PageLoader>{children}</PageLoader>
+    </SiteShell>
+  );
 }
