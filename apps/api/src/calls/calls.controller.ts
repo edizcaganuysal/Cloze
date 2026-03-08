@@ -32,7 +32,6 @@ import { SttService } from './stt.service';
 import { CallsGateway } from './calls.gateway';
 import { MockCallService } from './mock-call.service';
 import { AiCallService } from './ai-call.service';
-import { SupportEngineService } from '../support/support-engine.service';
 import { CreateCallDto } from './dto/create-call.dto';
 import { UpdateCallDto } from './dto/update-call.dto';
 import { PromptDebugDto } from './dto/prompt-debug.dto';
@@ -234,17 +233,13 @@ export class CallsController {
         this.logger.error(`Twilio initiation failed: ${(err as Error).message}`);
         // Fall back to stub mode if Twilio fails
         await this.callsService.setStatusImmediate(call.id, 'IN_PROGRESS');
-        if (dto.mode !== CallMode.SUPPORT) {
-          this.engineService.start(call.id, true);
-        }
+        this.engineService.start(call.id, true);
       }
     } else {
       // Stub / dev mode — fake transcript + suggestions
       this.logger.log(`Call ${call.id} created in stub mode`);
       await this.callsService.setStatusImmediate(call.id, 'IN_PROGRESS');
-      if (dto.mode !== CallMode.SUPPORT) {
-        this.engineService.start(call.id, true);
-      }
+      this.engineService.start(call.id, true);
     }
 
     return call;
@@ -408,7 +403,6 @@ export class TwilioWebhookController {
   constructor(
     private readonly callsService: CallsService,
     private readonly engineService: EngineService,
-    private readonly supportEngine: SupportEngineService,
     private readonly sttService: SttService,
     private readonly gateway: CallsGateway,
     private readonly aiCallService: AiCallService,
@@ -557,19 +551,6 @@ export class TwilioWebhookController {
         if (call.mode === CallMode.AI_CALLER) {
           // AI Caller — AiCallService drives the conversation, no copilot engine needed
           this.logger.log(`AI Call ${call.id} answered — AiCallService will handle conversation`);
-        } else if (call.mode === CallMode.SUPPORT) {
-          // Support call — find the support session linked to this call and start the support engine
-          const [session] = await this.db
-            .select({ id: schema.supportSessions.id })
-            .from(schema.supportSessions)
-            .where(eq(schema.supportSessions.callId, call.id))
-            .limit(1);
-          if (session) {
-            this.logger.log(`Support call ${call.id} answered — starting support engine for session ${session.id}`);
-            this.supportEngine.start(session.id);
-          } else {
-            this.logger.warn(`Support call ${call.id} answered but no support session found`);
-          }
         } else {
           // Regular outbound call — start the engine (no stub transcript, Deepgram handles it)
           const stubTranscript = !this.sttService.available;
@@ -581,20 +562,8 @@ export class TwilioWebhookController {
       }
 
       if (newStatus === 'COMPLETED' || newStatus === 'FAILED') {
-        if (call.mode === CallMode.SUPPORT) {
-          const [session] = await this.db
-            .select({ id: schema.supportSessions.id })
-            .from(schema.supportSessions)
-            .where(eq(schema.supportSessions.callId, call.id))
-            .limit(1);
-          if (session) {
-            this.logger.log(`Support call ${call.id} ended — stopping support engine for session ${session.id}`);
-            this.supportEngine.stop(session.id);
-          }
-        } else {
-          this.logger.log(`Call ${call.id} ended (${newStatus}) — stopping engine`);
-          this.engineService.stop(call.id);
-        }
+        this.logger.log(`Call ${call.id} ended (${newStatus}) — stopping engine`);
+        this.engineService.stop(call.id);
       }
     } else {
       this.logger.warn(`No call found for Twilio SID ${callSid}`);

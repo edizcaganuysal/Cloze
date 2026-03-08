@@ -12,7 +12,6 @@ import { ProductsModule } from './products/products.module';
 import { RequestsModule } from './requests/requests.module';
 import { IngestModule } from './ingest/ingest.module';
 import { BillingModule } from './billing/billing.module';
-import { SupportModule } from './support/support.module';
 import { MailModule } from './mail/mail.module';
 
 @Module({
@@ -31,7 +30,6 @@ import { MailModule } from './mail/mail.module';
     RequestsModule,
     IngestModule,
     BillingModule,
-    SupportModule,
   ],
 })
 export class AppModule {}

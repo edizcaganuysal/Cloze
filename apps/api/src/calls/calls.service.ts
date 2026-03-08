@@ -426,7 +426,7 @@ export class CallsService {
 
   // NOTE: Flat per-minute billing (getCallUsageCost, getCallUsageType,
   // calculateBillableMinutes, debitCallUsage) has been removed.
-  // Credits are now debited per-LLM-call in the engine/support-engine/ai-call/mock-call
+  // Credits are now debited per-LLM-call in the engine/ai-call/mock-call
   // services based on actual OpenAI token usage. See model-costs.ts for the cost registry.
 
   async create(user: JwtPayload, dto: CreateCallDto) {

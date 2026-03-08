@@ -2638,35 +2638,6 @@ export class IngestService {
       })
       .returning();
 
-    // Support context — extract support-specific fields
-    const supportPatch: Partial<typeof schema.supportContext.$inferInsert> = {};
-
-    const supportFaqs = readListCandidate(['support_faqs']);
-    if (supportFaqs.length > 0) supportPatch.supportFaqs = supportFaqs;
-
-    const troubleshootingGuides = readListCandidate(['troubleshooting_guides']);
-    if (troubleshootingGuides.length > 0) supportPatch.troubleshootingGuides = troubleshootingGuides;
-
-    const returnRefundPolicy = readTextCandidate(['return_refund_policy']);
-    if (returnRefundPolicy) supportPatch.returnRefundPolicy = returnRefundPolicy;
-
-    const slaRules = readListCandidate(['sla_rules']);
-    if (slaRules.length > 0) supportPatch.slaRules = slaRules;
-
-    const commonIssues = readListCandidate(['common_issues']);
-    if (commonIssues.length > 0) supportPatch.commonIssues = commonIssues;
-
-    if (Object.keys(supportPatch).length > 0) {
-      supportPatch.updatedAt = new Date();
-      await this.db
-        .insert(schema.supportContext)
-        .values({ orgId, ...supportPatch })
-        .onConflictDoUpdate({
-          target: schema.supportContext.orgId,
-          set: supportPatch,
-        });
-    }
-
     const offeringEntries = Array.isArray(bodyCompany.offerings) ? bodyCompany.offerings : [];
     const createdOfferings: Array<{ id: string; name: string }> = [];
     for (const item of offeringEntries.slice(0, 12)) {
