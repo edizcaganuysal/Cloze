@@ -105,7 +105,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative z-0 w-full max-w-[440px]" style={{ animation: 'login-float 6s ease-in-out infinite' }}>
+    <div className="relative z-0 w-full max-w-[440px]">
       {/* === Ambient background effects === */}
       <div className="pointer-events-none absolute -inset-32">
         {/* Mesh gradient orbs */}

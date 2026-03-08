@@ -63,7 +63,7 @@ export default function BookDemoPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center p-4">
-      <div className="relative z-0 w-full max-w-[540px]" style={{ animation: 'login-float 6s ease-in-out infinite' }}>
+      <div className="relative z-0 w-full max-w-[540px]">
         {/* === Ambient background effects === */}
         <div className="pointer-events-none absolute -inset-32">
           <div className="absolute left-1/2 top-[-40px] h-64 w-64 -translate-x-1/2 rounded-full bg-emerald-500/20 blur-[100px]" style={{ animation: 'aurora-drift 8s ease-in-out infinite alternate' }} />
