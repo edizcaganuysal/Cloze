@@ -113,14 +113,7 @@ export class AuthService {
       return this.buildAuthPayload(existing);
     }
 
-    if (mode === 'login') {
-      throw new UnauthorizedException('No account found for this Google user');
-    }
-
-    const orgName = dto.orgName?.trim();
-    if (!orgName) {
-      throw new BadRequestException('Account name is required');
-    }
+    const orgName = dto.orgName?.trim() || `${normalizedName || fallbackName}'s Team`;
 
     const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
     const created = await this.createOrgAdminUser({

@@ -119,7 +119,7 @@ export default function BookDemoPage() {
                   Home
                 </Link>
                 <Link href="/login" className="text-sm font-medium text-sky-400 transition-colors duration-300 hover:text-sky-300">
-                  Sign in
+                  Login
                 </Link>
               </div>
 

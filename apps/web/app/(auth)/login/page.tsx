@@ -21,11 +21,11 @@ export default function LoginPage() {
   const oauthErrorCode = searchParams.get('error') ?? '';
   const oauthError =
     oauthErrorCode === 'google_config_missing'
-      ? 'Google sign-in is not configured yet. Please contact support.'
+      ? 'Google login is not configured yet. Please contact support.'
       : oauthErrorCode === 'google_login_not_found'
         ? 'No account was found for that Google user. Create an account first.'
         : oauthErrorCode === 'google_oauth_failed'
-          ? 'Google sign-in could not be completed. Please try again.'
+          ? 'Google login could not be completed. Please try again.'
           : '';
 
   async function handleSubmit(e: React.FormEvent) {
@@ -136,7 +136,7 @@ export default function LoginPage() {
         <h1 className="mt-6 bg-gradient-to-b from-white via-white to-neutral-500 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
           Welcome back
         </h1>
-        <p className="mt-2 text-sm text-neutral-500">Sign in to your Cloze workspace</p>
+        <p className="mt-2 text-sm text-neutral-500">Log in to your Cloze workspace</p>
       </div>
 
       {/* === Card with animated spinning border === */}
@@ -260,7 +260,7 @@ export default function LoginPage() {
                 <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover/btn:opacity-100">
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent" style={{ animation: 'login-shimmer 1.5s ease-in-out infinite' }} />
                 </div>
-                <span className="relative">{loading ? 'Logging in…' : 'Sign in'}</span>
+                <span className="relative">{loading ? 'Logging in…' : 'Login'}</span>
               </button>
             </form>
           </div>

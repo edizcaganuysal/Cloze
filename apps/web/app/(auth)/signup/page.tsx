@@ -117,7 +117,7 @@ export default function SignupPage() {
                 Home
               </Link>
               <Link href="/login" className="text-sm font-medium text-sky-400 transition-colors duration-300 hover:text-sky-300">
-                Sign in instead
+                Login instead
               </Link>
             </div>
 
